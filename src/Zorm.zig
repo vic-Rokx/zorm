@@ -10,22 +10,25 @@ pub const Zorm = @This();
 conn: *clibpq.PGconn = undefined,
 conn_str: []const u8,
 arena: *std.mem.Allocator,
-sql_builder: SQLBuilder,
 
 const Query = struct {
     fn Create(comptime Z: type, comptime T: type) type {
         return struct {
             const Self = @This();
             zorm: *Z,
+            sql_builder: *SQLBuilder,
             pub fn init(zorm: *Z) !Self {
-                try zorm.sql_builder.createTable(T);
-                return Self{ .zorm = zorm };
+                var sql_builder: SQLBuilder = undefined;
+                try sql_builder.init(zorm.arena, 4096);
+                try sql_builder.createTable(T);
+                return Self{ .zorm = zorm, .sql_builder = &sql_builder };
             }
 
-            pub fn send(self: Self) !void {
-                _ = try self.zorm.sql_builder.addTerminator();
-                const data = self.zorm.sql_builder.ring_builder.data;
-                const len = self.zorm.sql_builder.ring_builder.len();
+            pub fn send(self: *Self) !void {
+                _ = try self.sql_builder.addTerminator();
+                defer self.sql_builder.ring_builder.deinit(self.zorm.arena.*);
+                const data = self.sql_builder.ring_builder.data;
+                const len = self.sql_builder.ring_builder.len();
                 const req = data[0..len];
                 try self.zorm.exec(req);
             }
@@ -36,20 +39,24 @@ const Query = struct {
         return struct {
             const Self = @This();
             zorm: *Z,
+            sql_builder: *SQLBuilder,
             pub fn init(zorm: *Z, table_value: T) !Self {
-                try zorm.sql_builder.insertTable(T, table_value);
-                return Self{ .zorm = zorm };
+                var sql_builder: SQLBuilder = undefined;
+                try sql_builder.init(zorm.arena, 4096);
+                try sql_builder.insertTable(T, table_value);
+                return Self{ .zorm = zorm, .sql_builder = &sql_builder };
             }
 
-            pub fn where(self: Self, query: WhereQuery) !Self {
-                try self.zorm.sql_builder.where(query);
+            pub fn where(self: *Self, query: WhereQuery) !Self {
+                try self.sql_builder.where(query);
                 return self;
             }
 
-            pub fn send(self: Self) !void {
-                _ = try self.zorm.sql_builder.addTerminator();
-                const data = self.zorm.sql_builder.ring_builder.data;
-                const len = self.zorm.sql_builder.ring_builder.len();
+            pub fn send(self: *Self) !void {
+                _ = try self.sql_builder.addTerminator();
+                defer self.sql_builder.ring_builder.deinit(self.zorm.arena.*);
+                const data = self.sql_builder.ring_builder.data;
+                const len = self.sql_builder.ring_builder.len();
                 const req = data[0..len];
                 try self.zorm.exec(req);
             }
@@ -59,20 +66,24 @@ const Query = struct {
         return struct {
             const Self = @This();
             zorm: *Z,
+            sql_builder: *SQLBuilder,
             pub fn init(zorm: *Z, query: []const u8) !Self {
-                try zorm.sql_builder.select(T, query);
-                return Self{ .zorm = zorm };
+                var sql_builder: SQLBuilder = undefined;
+                try sql_builder.init(zorm.arena, 4096);
+                try sql_builder.select(T, query);
+                return Self{ .zorm = zorm, .sql_builder = &sql_builder };
             }
 
-            pub fn where(self: Self, query: WhereQuery) !Self {
-                try self.zorm.sql_builder.where(query);
+            pub fn where(self: *Self, query: WhereQuery) !Self {
+                try self.sql_builder.where(query);
                 return self;
             }
 
-            pub fn send(self: Self) ![]T {
-                _ = try self.zorm.sql_builder.addTerminator();
-                const data = self.zorm.sql_builder.ring_builder.data;
-                const len = self.zorm.sql_builder.ring_builder.len();
+            pub fn send(self: *Self) ![]T {
+                _ = try self.sql_builder.addTerminator();
+                defer self.sql_builder.ring_builder.deinit(self.zorm.arena.*);
+                const data = self.sql_builder.ring_builder.data;
+                const len = self.sql_builder.ring_builder.len();
                 const req = data[0..len];
                 return self.zorm.queryTable(T, req);
             }
@@ -82,20 +93,24 @@ const Query = struct {
         return struct {
             const Self = @This();
             zorm: *Z,
+            sql_builder: SQLBuilder,
             pub fn init(zorm: *Z, cols: [][]const u8) !Self {
-                try zorm.sql_builder.selectByCol(T, cols);
-                return Self{ .zorm = zorm };
+                var sql_builder: SQLBuilder = undefined;
+                try sql_builder.init(zorm.arena, 4096);
+                try sql_builder.selectByCol(T, cols);
+                return Self{ .zorm = zorm, .sql_builder = sql_builder };
             }
 
-            pub fn where(self: Self, query: WhereQuery) !Self {
-                try self.zorm.sql_builder.where(query);
+            pub fn where(self: *Self, query: WhereQuery) !Self {
+                try self.sql_builder.where(query);
                 return self;
             }
 
-            pub fn send(self: Self) ![]T {
-                _ = try self.zorm.sql_builder.addTerminator();
-                const data = self.zorm.sql_builder.ring_builder.data;
-                const len = self.zorm.sql_builder.ring_builder.len();
+            pub fn send(self: *Self) ![]T {
+                _ = try self.sql_builder.addTerminator();
+                defer self.sql_builder.ring_builder.deinit(self.zorm.arena.*);
+                const data = self.sql_builder.ring_builder.data;
+                const len = self.sql_builder.ring_builder.len();
                 const req = data[0..len];
                 return self.zorm.queryTable(T, req);
             }
@@ -105,20 +120,24 @@ const Query = struct {
         return struct {
             const Self = @This();
             zorm: *Z,
+            sql_builder: *SQLBuilder,
             pub fn init(zorm: *Z, value: T) !Self {
-                try zorm.sql_builder.update(T, value);
-                return Self{ .zorm = zorm };
+                var sql_builder: SQLBuilder = undefined;
+                try sql_builder.init(zorm.arena, 4096);
+                try sql_builder.update(T, value);
+                return Self{ .zorm = zorm, .sql_builder = &sql_builder };
             }
 
-            pub fn where(self: Self, query: WhereQuery) !Self {
-                try self.zorm.sql_builder.where(query);
+            pub fn where(self: *Self, query: WhereQuery) !Self {
+                try self.sql_builder.where(query);
                 return self;
             }
 
-            pub fn send(self: Self) !void {
-                _ = try self.zorm.sql_builder.addTerminator();
-                const data = self.zorm.sql_builder.ring_builder.data;
-                const len = self.zorm.sql_builder.ring_builder.len();
+            pub fn send(self: *Self) !void {
+                _ = try self.sql_builder.addTerminator();
+                defer self.sql_builder.ring_builder.deinit(self.zorm.arena.*);
+                const data = self.sql_builder.ring_builder.data;
+                const len = self.sql_builder.ring_builder.len();
                 const req = data[0..len];
                 try self.zorm.exec(req);
             }
@@ -131,13 +150,9 @@ pub const PGSQL_Config = struct { conn_str: []const u8 };
 // When using *Zorm then it is a mutable var, else its *constZorm
 // this is important for the ring builder
 pub fn init(target: *Zorm, config: PGSQL_Config, allocator: *std.mem.Allocator) !void {
-    var sql_builder: SQLBuilder = undefined;
-    try sql_builder.init(allocator, 4096);
-
     target.* = .{
         .conn_str = config.conn_str,
         .arena = allocator,
-        .sql_builder = sql_builder,
     };
 }
 
@@ -304,6 +319,6 @@ pub fn uuidExtension(self: Zorm) !void {
 }
 
 pub fn deinit(self: *Zorm) void {
-    self.sql_builder.ring_builder.deinit(self.arena.*);
+    // self.sql_builder.ring_builder.deinit(self.arena.*);
     clibpq.PQfinish(self.conn);
 }
