@@ -1,5 +1,30 @@
 const std = @import("std");
 
+// first define the tags
+const ValueType = enum {
+    int,
+    float,
+    string,
+    unknown,
+};
+
+pub const ARRAY_TYPE = enum {
+    SMALLINT,
+    INTEGER,
+    BIGINT,
+    TEXT,
+    DECIMAL,
+    REAL,
+};
+
+// not too different from simple union
+pub const Value = union(ValueType) {
+    int: i32,
+    float: f64,
+    string: []const u8,
+    unknown: void,
+};
+
 pub const SMALLINT = struct {
     value: ?i8 = null,
     UNIQUE: bool = false,
@@ -86,8 +111,8 @@ pub const JSONB = struct {
 };
 
 pub const ARRAY = struct {
-    value: ?[]const u8 = null,
-    type: []const u8 = "TEXT", // Type of array elements (e.g., TEXT, INTEGER)
+    value: ?[]Value = null,
+    type: ?ARRAY_TYPE = null, // Type of array elements (e.g., TEXT, INTEGER)
     UNIQUE: bool = false,
     NOT_NULL: bool = false,
 };
