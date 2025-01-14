@@ -1,7 +1,7 @@
 const std = @import("std");
 const print = std.debug.print;
 const SQLBuilder = @import("SQLBuilder.zig");
-const WhereQuery = @import("SQLBuilder.zig").WhereQuery;
+const WhereQuery = SQLBuilder.WhereQuery;
 const clibpq = @cImport({
     @cInclude("libpq-fe.h");
 });
@@ -143,6 +143,33 @@ const Query = struct {
             }
         };
     }
+    fn Delete(comptime Z: type, comptime T: type) type {
+        return struct {
+            const Self = @This();
+            zorm: *Z,
+            sql_builder: *SQLBuilder,
+            pub fn init(zorm: *Z) !Self {
+                var sql_builder: SQLBuilder = undefined;
+                try sql_builder.init(zorm.arena, 4096);
+                try sql_builder.delete(T);
+                return Self{ .zorm = zorm, .sql_builder = &sql_builder };
+            }
+
+            pub fn where(self: *Self, query: WhereQuery) !Self {
+                try self.sql_builder.where(query);
+                return self;
+            }
+
+            pub fn send(self: *Self) !void {
+                _ = try self.sql_builder.addTerminator();
+                defer self.sql_builder.ring_builder.deinit(self.zorm.arena.*);
+                const data = self.sql_builder.ring_builder.data;
+                const len = self.sql_builder.ring_builder.len();
+                const req = data[0..len];
+                try self.zorm.exec(req);
+            }
+        };
+    }
 };
 
 pub const PGSQL_Config = struct { conn_str: []const u8 };
@@ -154,10 +181,6 @@ pub fn init(target: *Zorm, config: PGSQL_Config, allocator: *std.mem.Allocator) 
         .conn_str = config.conn_str,
         .arena = allocator,
     };
-}
-
-pub fn simple(self: *Zorm) !void {
-    try self.ring.writeSlice("Hello");
 }
 
 pub fn open(self: *Zorm) !void {
@@ -206,30 +229,6 @@ fn countCommas(str: []const u8) usize {
     return cc;
 }
 
-pub fn select(self: *Zorm, comptime T: type, query: []const u8) !Query.Select(Zorm, T) {
-    return Query.Select(Zorm, T).init(self, query);
-}
-
-pub fn selectByColumns(self: *Zorm, comptime T: type, cols: [][]const u8) !Query.SelectByCol(Zorm, T) {
-    return Query.SelectByCol(Zorm, T).init(self, cols);
-}
-
-pub fn insert(self: *Zorm, comptime T: type, value: T) !Query.Insert(Zorm, T) {
-    return Query.Insert(Zorm, T).init(self, value);
-}
-
-pub fn create(self: *Zorm, comptime T: type) !Query.Create(Zorm, T) {
-    return Query.Create(Zorm, T).init(self);
-}
-
-pub fn update(
-    self: *Zorm,
-    comptime T: type,
-    value: T,
-) !Query.Update(Zorm, T) {
-    return Query.Update(Zorm, T).init(self, value);
-}
-
 pub fn queryTable(self: Zorm, comptime T: type, query: []const u8) ![]T {
     const sql_query: [:0]const u8 = try std.mem.Allocator.dupeZ(
         std.heap.page_allocator,
@@ -267,7 +266,6 @@ pub fn queryTable(self: Zorm, comptime T: type, query: []const u8) ![]T {
                         },
                         []const u8, ?[]const u8 => {
                             @field(item, f.name) = value;
-                            // const v = @field(item, f.f.name);
                         },
                         bool => {
                             if (std.mem.eql(u8, value, "true")) {
@@ -286,7 +284,7 @@ pub fn queryTable(self: Zorm, comptime T: type, query: []const u8) ![]T {
                             var i: usize = 0;
                             while (itr.next()) |v| {
                                 switch (element_type) {
-                                    i32 => {
+                                    i32, f32 => {
                                         const v_int = try std.fmt.parseInt(field_type, v, 10);
                                         arr[i] = v_int;
                                     },
@@ -318,7 +316,30 @@ pub fn uuidExtension(self: Zorm) !void {
     try self.exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"");
 }
 
+pub fn select(self: *Zorm, comptime T: type, query: []const u8) !Query.Select(Zorm, T) {
+    return Query.Select(Zorm, T).init(self, query);
+}
+
+pub fn selectByColumns(self: *Zorm, comptime T: type, cols: [][]const u8) !Query.SelectByCol(Zorm, T) {
+    return Query.SelectByCol(Zorm, T).init(self, cols);
+}
+
+pub fn insert(self: *Zorm, comptime T: type, value: T) !Query.Insert(Zorm, T) {
+    return Query.Insert(Zorm, T).init(self, value);
+}
+
+pub fn create(self: *Zorm, comptime T: type) !Query.Create(Zorm, T) {
+    return Query.Create(Zorm, T).init(self);
+}
+
+pub fn delete(self: *Zorm, comptime T: type) !Query.Delete(Zorm, T) {
+    return Query.Delete(Zorm, T).init(self);
+}
+
+pub fn update(self: *Zorm, comptime T: type, value: T) !Query.Update(Zorm, T) {
+    return Query.Update(Zorm, T).init(self, value);
+}
+
 pub fn deinit(self: *Zorm) void {
-    // self.sql_builder.ring_builder.deinit(self.arena.*);
     clibpq.PQfinish(self.conn);
 }
